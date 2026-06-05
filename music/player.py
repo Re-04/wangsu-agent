@@ -1,28 +1,39 @@
 """
 音乐播放模块 - 歌曲查找 + 播放链接
 =====================================
-优先调免费公共网易云API搜索歌曲ID
-API 来源：https://music.liyaoyu.top（无需签名，免费可用）
-失败时回退到内置歌曲列表
+多路公共 API 搜索，一路不行自动换下一路
+全部失败时回退到内置歌曲列表
 """
 import requests
 import urllib3
 from typing import Optional
 
-# 关闭 SSL 警告（第三方 API 证书不匹配）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 免费公共网易云音乐接口
-API_SEARCH = "https://music.liyaoyu.top/search"
-API_SONG = "https://music.liyaoyu.top/song/detail"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+# === 免费公共网易云音乐接口（多路备用） ===
+API_LIST = [
+    {
+        "name": "liyaoyu",
+        "url": "https://music.liyaoyu.top/search",
+        "params": lambda kw, limit: {"keywords": kw, "limit": limit},
+        "parse": lambda data: data.get("result", {}).get("songs", []),
+    },
+    {
+        "name": "66mz8",
+        "url": "https://api.66mz8.com/api/music.163.php",
+        "params": lambda kw, limit: {"type": "search", "name": kw, "n": limit},
+        "parse": lambda data: data if isinstance(data, list) else data.get("data", []),
+    },
+]
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
 class MusicPlayer:
     """歌曲查找与播放器"""
 
     def __init__(self):
-        # 内置汪苏泷热门歌曲（API 失败时的备选）
+        # 内置汪苏泷热门歌曲（API 全失败时的备选）
         self.builtin_songs = [
             {"name": "有点甜", "artist": "汪苏泷/BY2", "id": 27759674},
             {"name": "万有引力", "artist": "汪苏泷", "id": 27759677},
@@ -46,41 +57,60 @@ class MusicPlayer:
             {"name": "第一首情歌", "artist": "汪苏泷", "id": 27759683},
         ]
 
-    # ── 搜索（API优先 → 内置备选） ──
+    # ── 搜索（多路API → 内置备选） ──
 
     def search(self, keyword: str, limit: int = 5) -> list:
-        """搜索歌曲：优先调公共API，失败回退内置列表"""
-        results = self._search_api(keyword, limit)
+        """搜索歌曲，自动切换备用API"""
+        results = self._search_all_apis(keyword, limit)
         if results:
             return results
         return self._search_builtin(keyword, limit)
 
-    def _search_api(self, keyword: str, limit: int = 5) -> list:
-        """调免费公共网易云 API 搜索"""
-        try:
-            resp = requests.get(
-                API_SEARCH,
-                params={"keywords": keyword, "limit": limit},
-                headers=HEADERS,
-                timeout=10,
-                verify=False,   # 第三方API，SSL证书不匹配
-            )
-            data = resp.json()
-            if data.get("code") != 200:
-                return []
+    def _search_all_apis(self, keyword: str, limit: int = 5) -> list:
+        """挨个尝试所有公共API"""
+        for api in API_LIST:
+            try:
+                resp = requests.get(
+                    api["url"],
+                    params=api["params"](keyword, limit),
+                    headers=HEADERS,
+                    timeout=8,
+                    verify=False,
+                )
+                if resp.status_code != 200:
+                    continue
 
-            songs = []
-            for item in data.get("result", {}).get("songs", []):
-                artists = ", ".join(a["name"] for a in item.get("artists", []))
-                songs.append({
-                    "name": item["name"],
-                    "artist": artists,
-                    "id": item["id"],
-                    "album": item.get("album", {}).get("name", ""),
-                })
-            return songs
-        except Exception:
-            return []
+                data = resp.json()
+                raw_songs = api["parse"](data)
+                if not raw_songs:
+                    continue
+
+                songs = []
+                for item in raw_songs:
+                    # 兼容不同API的返回格式
+                    song_id = item.get("id") or item.get("song_id")
+                    song_name = item.get("name") or item.get("song_name")
+                    artists_data = item.get("artists") or item.get("artist") or []
+                    if isinstance(artists_data, str):
+                        artist_name = artists_data
+                    elif isinstance(artists_data, list):
+                        artist_name = ", ".join(
+                            a.get("name", "") for a in artists_data if isinstance(a, dict)
+                        )
+                    else:
+                        artist_name = "未知"
+
+                    if song_id and song_name:
+                        songs.append({
+                            "name": song_name,
+                            "artist": artist_name or "未知",
+                            "id": int(song_id) if not isinstance(song_id, int) else song_id,
+                        })
+                if songs:
+                    return songs[:limit]
+            except Exception:
+                continue
+        return []
 
     def _search_builtin(self, keyword: str, limit: int = 5) -> list:
         """从内置列表模糊查找"""
@@ -105,23 +135,22 @@ class MusicPlayer:
     # ── 播放器 ──
 
     def get_play_url(self, song_id: int) -> str:
-        """网易云音乐外链播放URL"""
         return f"https://music.163.com/song/media/outer/url?id={song_id}.mp3"
 
     def get_player_html(self, song_name: str) -> str:
-        """
-        根据歌名查找并生成 HTML 播放器
-        """
+        """根据歌名生成 HTML 播放器"""
         results = self.search(song_name)
         if not results:
             return (
                 '<div style="text-align:center;padding:30px;color:#999;">'
-                f'未找到「{song_name}」的相关结果</div>'
+                f'未找到「{song_name}」<br>'
+                f'试试内置歌单：有点甜、万有引力、小星星...</div>'
             )
 
         song = results[0]
         sid = song["id"]
         audio_url = self.get_play_url(sid)
+        netease_url = f"https://music.163.com/#/song?id={sid}"
 
         return (
             '<div style="text-align:center;padding:20px;'
@@ -136,15 +165,14 @@ class MusicPlayer:
             f'</audio>'
             f'<p style="font-size:12px;margin-top:10px;opacity:0.7;">'
             f'若无法播放，'
-            f'<a href="https://music.163.com/#/song?id={sid}" '
-            f'target="_blank" style="color:white;text-decoration:underline;">'
+            f'<a href="{netease_url}" target="_blank" '
+            f'style="color:white;text-decoration:underline;">'
             f'点此在网易云打开</a></p></div>'
         )
 
     # ── 心情推荐 ──
 
     def get_recommendations(self, mood: str) -> list:
-        """根据心情推荐内置歌曲"""
         mood_map = {
             "开心": ["有点甜", "万有引力", "专属味道", "幸福是被你需要"],
             "失恋": ["苦笑", "不分手的恋爱", "风度", "那一年"],
