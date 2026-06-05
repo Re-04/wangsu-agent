@@ -237,93 +237,98 @@ def create_ui():
             # ═══════ 标签页 2：音乐播放 ═══════
             with gr.TabItem("🎶 在线听歌"):
 
-                gr.Markdown("### 🔍 搜索歌曲（网易云音乐）")
+                gr.Markdown("### 🎵 输入歌名，直接播放")
 
                 with gr.Row():
-                    search_input = gr.Textbox(
-                        label="输入歌名",
-                        placeholder="例如：有点甜、万有引力...",
+                    play_input = gr.Textbox(
+                        label="歌名",
+                        placeholder="输入歌名，比如：有点甜",
                         scale=4,
+                        elem_id="play_input",
                     )
-                    search_btn = gr.Button("🔍 搜索", variant="primary", scale=1)
-
-                song_selector = gr.Dropdown(
-                    choices=[],
-                    label="搜索结果（点击选择播放）",
-                    interactive=True,
-                )
+                    play_btn = gr.Button("▶️ 播放", variant="primary", scale=1)
 
                 player_html = gr.HTML(
-                    value="<p style='color:gray; text-align:center; padding:20px;'>搜索并选择歌曲后，播放器会出现在这里</p>"
+                    value="<p style='color:gray; text-align:center; padding:40px;'>输入歌名，点播放按钮</p>"
                 )
 
-                # 搜索按钮事件
-                search_btn.click(
-                    fn=search_songs,
-                    inputs=search_input,
-                    outputs=song_selector,
-                ).then(
-                    fn=lambda: None,
-                    inputs=[],
-                    outputs=[],
-                )
+                def do_play(song_name: str):
+                    """播放歌曲"""
+                    if not song_name or not TOOLS:
+                        return "<p style='color:red'>请输入歌名</p>"
+                    # 从内置列表查找
+                    results = TOOLS.search_music(song_name.strip())
+                    if results:
+                        sid = results[0]["id"]
+                        name = results[0]["name"]
+                        artist = results[0]["artist"]
+                        # 用 HTML5 audio 标签，兼容性好
+                        audio_url = f"https://music.163.com/song/media/outer/url?id={sid}.mp3"
+                        html = (
+                            f'<div style="text-align:center; padding:15px; '
+                            f'background:#f5f5f5; border-radius:12px;">'
+                            f'<p style="font-size:18px; font-weight:bold;">'
+                            f'🎵 {name} - {artist}</p>'
+                            f'<audio controls autoplay style="width:100%;">'
+                            f'<source src="{audio_url}" type="audio/mpeg">'
+                            f'您的浏览器不支持音频播放</audio>'
+                            f'<p style="font-size:12px; color:gray; margin-top:8px;">'
+                            f'来源：网易云音乐</p></div>'
+                        )
+                        return html
+                    return f"<p style='color:red'>未找到「{song_name}」，试试其他歌名</p>"
 
-                # 下拉选择歌曲事件
-                song_selector.change(
-                    fn=play_song,
-                    inputs=song_selector,
+                play_btn.click(
+                    fn=do_play,
+                    inputs=play_input,
+                    outputs=player_html,
+                )
+                play_input.submit(
+                    fn=do_play,
+                    inputs=play_input,
                     outputs=player_html,
                 )
 
                 gr.Markdown("---")
-                gr.Markdown("### ⚡ 快捷点歌")
+                gr.Markdown("### ⚡ 一键播放热门歌曲")
 
-                # 用下拉菜单代替多个按钮，兼容性更好
-                quick_selector = gr.Dropdown(
-                    choices=[
-                        "有点甜", "万有引力", "不分手的恋爱",
-                        "小星星", "风度", "花千骨",
-                        "年轮", "追光者", "大娱乐家",
-                        "苦笑", "三国杀", "巴赫旧约",
-                        "专属味道", "慢慢懂", "埋葬冬天",
-                    ],
-                    label="选择歌曲直接播放",
-                    interactive=True,
-                )
-                quick_selector.change(
-                    fn=quick_play,
-                    inputs=quick_selector,
-                    outputs=player_html,
-                )
+                hot_songs = [
+                    "有点甜", "万有引力", "不分手的恋爱", "小星星",
+                    "风度", "花千骨", "年轮", "追光者",
+                    "大娱乐家", "苦笑", "三国杀", "巴赫旧约",
+                    "专属味道", "埋葬冬天", "慢慢懂", "唯你懂我心",
+                ]
+                for i in range(0, 16, 4):
+                    row_songs = hot_songs[i:i+4]
+                    with gr.Row():
+                        for song in row_songs:
+                            btn = gr.Button(song, size="sm", min_width=80)
+                            btn.click(
+                                fn=lambda s=song: (gr.update(value=s), do_play(s)),
+                                inputs=[],
+                                outputs=[play_input, player_html],
+                            )
 
                 gr.Markdown("---")
-                gr.Markdown("### 🎭 按心情听歌")
+                gr.Markdown("### 🎭 按心情推荐")
 
-                mood_input = gr.Radio(
-                    choices=["😊 开心", "😢 失恋", "📖 怀旧", "🥰 甜蜜", "🌙 安静"],
-                    label="你现在的心情",
-                    value="😊 开心",
-                )
-                mood_btn = gr.Button("🎯 推荐适合的歌")
-                mood_output = gr.JSON(label="推荐歌单")
-
-                def get_mood_songs(mood_label: str):
-                    mood_map = {
-                        "😊 开心": "开心",
-                        "😢 失恋": "失恋",
-                        "📖 怀旧": "怀旧",
-                        "🥰 甜蜜": "甜蜜",
-                        "🌙 安静": "安静",
-                    }
-                    mood_key = mood_map.get(mood_label, "开心")
-                    songs = TOOLS.get_mood_music(mood_key) if TOOLS else []
-                    return [f"🎵 {s['name']} - {s['artist']}" for s in songs]
-
-                mood_btn.click(
-                    fn=get_mood_songs,
-                    inputs=mood_input,
-                    outputs=mood_output,
-                )
+                mood_btns = {
+                    "😊 开心": "开心",
+                    "😢 失恋": "失恋",
+                    "📖 怀旧": "怀旧",
+                    "🥰 甜蜜": "甜蜜",
+                    "🌙 安静": "安静",
+                }
+                with gr.Row():
+                    for mood_label, mood_key in mood_btns.items():
+                        btn = gr.Button(mood_label, size="sm", min_width=80)
+                        btn.click(
+                            fn=lambda mk=mood_key: do_play(
+                                TOOLS.get_mood_music(mk)[0]["name"] if TOOLS and TOOLS.get_mood_music(mk) else ""
+                            ),
+                            inputs=[],
+                            outputs=player_html,
+                        )
 
             # ═══════ 标签页 3：关于 ═══════
             with gr.TabItem("ℹ️ 关于"):
