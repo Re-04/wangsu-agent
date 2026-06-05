@@ -6,7 +6,6 @@
 
 首次运行前安装依赖：
     pip install -r requirements.txt
-    pip install gradio
 
 需要在环境变量设置 DeepSeek API Key：
     export DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
@@ -216,24 +215,7 @@ def respond(message, history):
 
 def create_ui():
     """创建 Gradio 界面"""
-
-    custom_css = """
-    .gradio-container {
-        max-width: 800px !important;
-        margin: auto !important;
-    }
-    .chat-message {
-        font-size: 16px !important;
-        line-height: 1.6 !important;
-    }
-    footer { display: none !important; }
-    """
-
-    with gr.Blocks(
-        title="汪苏泷 AI Agent",
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="sky"),
-        css=custom_css,
-    ) as demo:
+    with gr.Blocks(title="汪苏泷 AI Agent") as demo:
 
         gr.Markdown(
             """
@@ -247,12 +229,10 @@ def create_ui():
         chatbot = gr.ChatInterface(
             fn=respond,
             title="",
-            description="直接输入你想说的，或者试试下面的快捷功能",
-            placeholder="说点什么吧...",
-            theme="soft",
+            description="直接输入你想说的，或者试试下面的话题",
             examples=[
-                ["你是谁"],
-                ["讲个你的故事"],
+                ["你好，介绍一下你自己"],
+                ["讲个你的幕后故事"],
                 ["猜歌名"],
                 ["lyric 毕业季"],
                 ["copy 朋友圈"],
@@ -260,14 +240,13 @@ def create_ui():
                 ["recommend 心情不好"],
                 ["analyze-song 万有引力"],
             ],
-            cache_examples=False,
         )
 
         # 底部信息
         gr.Markdown(
             """
             ---
-            **提示**：输入 `help` 查看全部可用指令 | 基于 DeepSeek API + Librosa + Edge-TTS
+            **提示**：输入 `help` 查看全部可用指令
             """
         )
 
@@ -277,20 +256,24 @@ def create_ui():
 # ────────── 启动 ──────────
 
 if __name__ == "__main__":
+    _css = """
+    .gradio-container { max-width: 800px !important; margin: auto !important; }
+    .chat-message { font-size: 16px !important; line-height: 1.6 !important; }
+    footer { display: none !important; }
+    """
+
     if ERROR_MSG:
         print(f"❌ {ERROR_MSG}")
         print("请先设置 DeepSeek API Key 后再启动。")
-        print("  Windows: set DEEPSEEK_API_KEY=sk-xxx")
-        print("  Mac/Linux: export DEEPSEEK_API_KEY=sk-xxx")
         sys.exit(1)
 
     print("🎵 启动汪苏泷 AI Agent Web 界面...")
-    print("   浏览器访问: http://127.0.0.1:7860")
     print("   按 Ctrl+C 停止服务")
 
     demo = create_ui()
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
-        share=False,  # 设为 True 可生成公网链接
+        share=False,
+        css=_css,
     )
