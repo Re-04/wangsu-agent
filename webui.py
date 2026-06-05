@@ -215,7 +215,12 @@ def respond(message, history):
 
 def create_ui():
     """创建 Gradio 界面"""
-    with gr.Blocks(title="汪苏泷 AI Agent") as demo:
+    _css = """
+    .gradio-container { max-width: 800px !important; margin: auto !important; }
+    .chat-message { font-size: 16px !important; line-height: 1.6 !important; }
+    footer { display: none !important; }
+    """
+    with gr.Blocks(title="汪苏泷 AI Agent", css=_css) as demo:
 
         gr.Markdown(
             """
@@ -256,12 +261,6 @@ def create_ui():
 # ────────── 启动 ──────────
 
 if __name__ == "__main__":
-    _css = """
-    .gradio-container { max-width: 800px !important; margin: auto !important; }
-    .chat-message { font-size: 16px !important; line-height: 1.6 !important; }
-    footer { display: none !important; }
-    """
-
     if ERROR_MSG:
         print(f"❌ {ERROR_MSG}")
         print("请先设置 DeepSeek API Key 后再启动。")
@@ -275,5 +274,4 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=7860,
         share=False,
-        css=_css,
     )
