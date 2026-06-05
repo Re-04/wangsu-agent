@@ -1,0 +1,23 @@
+# 环境配置
+.env
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 音频缓存
+audio_cache/
+*.wav
+*.mp3
+
+# IDE
+.vscode/
+.idea/
+
+# 系统
+.DS_Store
+Thumbs.db
