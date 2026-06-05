@@ -6,8 +6,11 @@ API 来源：https://music.liyaoyu.top（无需签名，免费可用）
 失败时回退到内置歌曲列表
 """
 import requests
+import urllib3
 from typing import Optional
 
+# 关闭 SSL 警告（第三方 API 证书不匹配）
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 免费公共网易云音乐接口
 API_SEARCH = "https://music.liyaoyu.top/search"
@@ -60,6 +63,7 @@ class MusicPlayer:
                 params={"keywords": keyword, "limit": limit},
                 headers=HEADERS,
                 timeout=10,
+                verify=False,   # 第三方API，SSL证书不匹配
             )
             data = resp.json()
             if data.get("code") != 200:
