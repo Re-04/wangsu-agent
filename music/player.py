@@ -1,39 +1,17 @@
 """
-音乐播放模块 - 歌曲查找 + 播放链接
-=====================================
-多路公共 API 搜索，一路不行自动换下一路
-全部失败时回退到内置歌曲列表
+音乐播放模块 - 内置歌曲列表 + iframe 嵌入播放
+===============================================
+用网易云官方 outchain 播放器（已验证可通）
+歌曲 ID 从内置列表获取，不依赖外部 API
 """
-import requests
-import urllib3
 from typing import Optional
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# === 免费公共网易云音乐接口（多路备用） ===
-API_LIST = [
-    {
-        "name": "liyaoyu",
-        "url": "https://music.liyaoyu.top/search",
-        "params": lambda kw, limit: {"keywords": kw, "limit": limit},
-        "parse": lambda data: data.get("result", {}).get("songs", []),
-    },
-    {
-        "name": "66mz8",
-        "url": "https://api.66mz8.com/api/music.163.php",
-        "params": lambda kw, limit: {"type": "search", "name": kw, "n": limit},
-        "parse": lambda data: data if isinstance(data, list) else data.get("data", []),
-    },
-]
-
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
 class MusicPlayer:
     """歌曲查找与播放器"""
 
     def __init__(self):
-        # 内置汪苏泷热门歌曲（API 全失败时的备选）
+        # 汪苏泷热门歌曲（含已确认有效的网易云ID）
         self.builtin_songs = [
             {"name": "有点甜", "artist": "汪苏泷/BY2", "id": 27759674},
             {"name": "万有引力", "artist": "汪苏泷", "id": 27759677},
@@ -57,63 +35,8 @@ class MusicPlayer:
             {"name": "第一首情歌", "artist": "汪苏泷", "id": 27759683},
         ]
 
-    # ── 搜索（多路API → 内置备选） ──
-
     def search(self, keyword: str, limit: int = 5) -> list:
-        """搜索歌曲，自动切换备用API"""
-        results = self._search_all_apis(keyword, limit)
-        if results:
-            return results
-        return self._search_builtin(keyword, limit)
-
-    def _search_all_apis(self, keyword: str, limit: int = 5) -> list:
-        """挨个尝试所有公共API"""
-        for api in API_LIST:
-            try:
-                resp = requests.get(
-                    api["url"],
-                    params=api["params"](keyword, limit),
-                    headers=HEADERS,
-                    timeout=8,
-                    verify=False,
-                )
-                if resp.status_code != 200:
-                    continue
-
-                data = resp.json()
-                raw_songs = api["parse"](data)
-                if not raw_songs:
-                    continue
-
-                songs = []
-                for item in raw_songs:
-                    # 兼容不同API的返回格式
-                    song_id = item.get("id") or item.get("song_id")
-                    song_name = item.get("name") or item.get("song_name")
-                    artists_data = item.get("artists") or item.get("artist") or []
-                    if isinstance(artists_data, str):
-                        artist_name = artists_data
-                    elif isinstance(artists_data, list):
-                        artist_name = ", ".join(
-                            a.get("name", "") for a in artists_data if isinstance(a, dict)
-                        )
-                    else:
-                        artist_name = "未知"
-
-                    if song_id and song_name:
-                        songs.append({
-                            "name": song_name,
-                            "artist": artist_name or "未知",
-                            "id": int(song_id) if not isinstance(song_id, int) else song_id,
-                        })
-                if songs:
-                    return songs[:limit]
-            except Exception:
-                continue
-        return []
-
-    def _search_builtin(self, keyword: str, limit: int = 5) -> list:
-        """从内置列表模糊查找"""
+        """从内置列表模糊查找歌曲"""
         kw = keyword.strip().lower().replace(" ", "")
         if not kw:
             return self.builtin_songs[:limit]
@@ -130,44 +53,42 @@ class MusicPlayer:
                     results.append(s)
             if len(results) >= limit:
                 break
-        return results if results else self.builtin_songs[:limit]
-
-    # ── 播放器 ──
-
-    def get_play_url(self, song_id: int) -> str:
-        return f"https://music.163.com/song/media/outer/url?id={song_id}.mp3"
+        return results if results else []
 
     def get_player_html(self, song_name: str) -> str:
-        """根据歌名生成 HTML 播放器"""
+        """
+        根据歌名生成网易云嵌入播放器 HTML
+        使用 verified 可用的 outchain/player
+        """
         results = self.search(song_name)
         if not results:
+            # 不在内置列表 -> 提供网易云搜索链接
+            search_url = f"https://music.163.com/#/search/m/?s={song_name}"
             return (
-                '<div style="text-align:center;padding:30px;color:#999;">'
-                f'未找到「{song_name}」<br>'
-                f'试试内置歌单：有点甜、万有引力、小星星...</div>'
+                f'<div style="text-align:center;padding:30px;color:#666;">'
+                f'<p>「{song_name}」不在快捷歌单中</p>'
+                f'<p style="font-size:14px;margin-top:10px;">'
+                f'<a href="{search_url}" target="_blank" '
+                f'style="color:#667eea;text-decoration:underline;">'
+                f'👉 点此在网易云搜索</a></p>'
+                f'<p style="font-size:12px;color:#999;margin-top:8px;">'
+                f'或者试试：有点甜、万有引力、小星星...</p></div>'
             )
 
         song = results[0]
         sid = song["id"]
-        audio_url = self.get_play_url(sid)
-        netease_url = f"https://music.163.com/#/song?id={sid}"
 
         return (
-            '<div style="text-align:center;padding:20px;'
-            'background:linear-gradient(135deg,#667eea,#764ba2);'
-            'border-radius:16px;color:white;">'
-            f'<p style="font-size:20px;font-weight:bold;margin-bottom:5px;">'
-            f'🎵 {song["name"]}</p>'
-            f'<p style="font-size:14px;margin-bottom:15px;opacity:0.9;">'
-            f'{song["artist"]}</p>'
-            f'<audio controls autoplay style="width:100%;max-width:400px;">'
-            f'<source src="{audio_url}" type="audio/mpeg">'
-            f'</audio>'
-            f'<p style="font-size:12px;margin-top:10px;opacity:0.7;">'
-            f'若无法播放，'
-            f'<a href="{netease_url}" target="_blank" '
-            f'style="color:white;text-decoration:underline;">'
-            f'点此在网易云打开</a></p></div>'
+            f'<div style="text-align:center;padding:15px;'
+            f'background:#f8f9ff;border-radius:12px;'
+            f'border:1px solid #e0e3f0;">'
+            f'<p style="font-size:18px;font-weight:bold;color:#333;margin-bottom:8px;">'
+            f'🎵 {song["name"]} <span style="font-size:14px;color:#999;font-weight:normal;">'
+            f'- {song["artist"]}</span></p>'
+            f'<iframe frameborder="no" border="0" marginwidth="0" marginheight="0" '
+            f'width=330 height=86 '
+            f'src="//music.163.com/outchain/player?type=2&id={sid}&auto=1&height=66">'
+            f'</iframe></div>'
         )
 
     # ── 心情推荐 ──
