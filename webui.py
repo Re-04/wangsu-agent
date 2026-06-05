@@ -147,6 +147,15 @@ def respond(message, history):
 
 
 
+# ────────── 播放函数（模块顶层，避免 Gradio 闭包问题） ──────────
+
+def do_play(song_name: str) -> str:
+    """播放歌曲：返回 HTML 播放器"""
+    if not song_name or not TOOLS:
+        return "<p style='color:red'>请输入歌名</p>"
+    return TOOLS.player.get_player_html(song_name.strip())
+
+
 # ────────── 构建页面 ──────────
 
 def create_ui():
@@ -202,12 +211,6 @@ def create_ui():
                     value="<p style='color:gray; text-align:center; padding:40px;'>输入歌名，点播放按钮</p>"
                 )
 
-                def do_play(song_name: str):
-                    """播放歌曲"""
-                    if not song_name or not TOOLS:
-                        return "<p style='color:red'>请输入歌名</p>"
-                    return TOOLS.player.get_player_html(song_name.strip())
-
                 play_btn.click(
                     fn=do_play,
                     inputs=play_input,
@@ -220,7 +223,7 @@ def create_ui():
                 )
 
                 gr.Markdown("---")
-                gr.Markdown("### ⚡ 一键播放热门歌曲")
+                gr.Markdown("### ⚡ 一键播放热门歌曲（直接点击）")
 
                 hot_songs = [
                     "有点甜", "万有引力", "不分手的恋爱", "小星星",
@@ -234,7 +237,10 @@ def create_ui():
                         for song in row_songs:
                             btn = gr.Button(song, size="sm", min_width=80)
                             btn.click(
-                                fn=lambda s=song: (gr.update(value=s), do_play(s)),
+                                fn=lambda s=song: (
+                                    gr.update(value=s),
+                                    TOOLS.player.get_player_html(s) if TOOLS else ""
+                                ),
                                 inputs=[],
                                 outputs=[play_input, player_html],
                             )
@@ -252,10 +258,15 @@ def create_ui():
                 with gr.Row():
                     for mood_label, mood_key in mood_btns.items():
                         btn = gr.Button(mood_label, size="sm", min_width=80)
+                        def make_mood_fn(mk):
+                            def fn():
+                                songs = TOOLS.get_mood_music(mk) if TOOLS else []
+                                if songs:
+                                    return do_play(songs[0]["name"])
+                                return "<p>暂无推荐</p>"
+                            return fn
                         btn.click(
-                            fn=lambda mk=mood_key: do_play(
-                                TOOLS.get_mood_music(mk)[0]["name"] if TOOLS and TOOLS.get_mood_music(mk) else ""
-                            ),
+                            fn=make_mood_fn(mood_key),
                             inputs=[],
                             outputs=player_html,
                         )
