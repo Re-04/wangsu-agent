@@ -280,6 +280,8 @@ def create_ui():
                 gr.Markdown("### ⚡ 快捷播放")
 
                 # 热门歌曲快捷按钮（分两行）
+                # 用 hidden textbox 中转，避免 gr.State 兼容问题
+                quick_song_input = gr.Textbox(visible=False)
                 hot_songs = [
                     "有点甜", "万有引力", "不分手的恋爱",
                     "小星星", "风度", "花千骨",
@@ -292,8 +294,8 @@ def create_ui():
                         for song in row_songs:
                             btn = gr.Button(song, size="sm", min_width=80)
                             btn.click(
-                                fn=quick_play,
-                                inputs=[gr.State(song)],
+                                fn=lambda s=song: quick_play(s),
+                                inputs=[],
                                 outputs=player_html,
                             )
 
