@@ -6,6 +6,7 @@ from knowledge.retriever import WangKnowledgeBase
 from knowledge.games import LyricGame
 from music.analyzer import MusicAnalyzer
 from music.tts import TTSEngine
+from music.player import MusicPlayer
 from generation.lyric_gen import LyricGenerator
 from generation.copywrite import Copywriter
 
@@ -19,6 +20,7 @@ class AgentTools:
         self.games = LyricGame()
         self.analyzer = MusicAnalyzer()
         self.tts = TTSEngine()
+        self.player = MusicPlayer()
         self.lyric_gen = LyricGenerator(agent)
         self.copywriter = Copywriter(agent)
 
@@ -174,3 +176,23 @@ class AgentTools:
             return "Whisper 未安装，请运行 pip install openai-whisper"
         except Exception as e:
             return f"语音识别出错：{e}"
+
+    # ══════════════ 音乐播放 ══════════════
+
+    def search_music(self, keyword: str) -> list:
+        """搜索歌曲"""
+        return self.player.search(keyword)
+
+    def get_player_html(self, song_id: int) -> str:
+        """获取歌曲嵌入播放器 HTML"""
+        return self.player.get_embed_html(song_id)
+
+    def get_mood_music(self, mood: str) -> list:
+        """按心情推荐歌曲"""
+        return self.player.get_recommendations(mood)
+
+    def get_playlist_html(self, playlist_id: str = None) -> str:
+        """获取歌单嵌入播放器"""
+        name = playlist_id or "汪苏泷热门50首"
+        pid = self.player.DEFAULT_PLAYLISTS.get(name, "530739351")
+        return self.player.get_playlist_embed(pid)
