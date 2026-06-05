@@ -1,49 +1,17 @@
 """
-音乐播放模块 - 歌曲搜索 + 播放链接生成
-=========================================
-基于网易云音乐公开 API，无需 API Key
-
-搜索歌曲 → 获得歌曲 ID → 生成可嵌入播放器
+音乐播放模块 - 歌曲查找 + 播放链接
+=====================================
+直接从内置列表查找歌曲，返回网易云外链播放URL
+不调网易云API（魔搭服务器会被拦截），全用离线匹配
 """
-import re
-import json
-import requests
-import urllib.parse
 from typing import Optional
 
 
-# 网易云音乐 API
-SEARCH_URL = "https://music.163.com/api/search/pc"
-SONG_URL = "https://music.163.com/api/song/detail"
-PLAYER_TPL = (
-    '<iframe frameborder="no" border="0" marginwidth="0" marginheight="0" '
-    'width=330 height=86 '
-    'src="//music.163.com/outchain/player?type=2&id={song_id}&auto=1&height=66">'
-    '</iframe>'
-)
-
-# 汪苏泷热门歌单（网易云歌单ID，方便一键播放）
-DEFAULT_PLAYLISTS = {
-    "汪苏泷热门50首": "530739351",
-    "汪苏泷·经典情歌": "2659807983",
-    "汪苏泷·全部歌曲": "2474913662",
-}
-
-
 class MusicPlayer:
-    """歌曲搜索与播放器"""
+    """歌曲查找与播放器"""
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://music.163.com/",
-        })
-        # 内置汪苏泷热门歌曲（搜索失败时的备选）
+        # 内置汪苏泷热门歌曲（含已知网易云ID）
         self.builtin_songs = [
             {"name": "有点甜", "artist": "汪苏泷/BY2", "id": 27759674},
             {"name": "万有引力", "artist": "汪苏泷", "id": 27759677},
@@ -57,7 +25,6 @@ class MusicPlayer:
             {"name": "苦笑", "artist": "汪苏泷", "id": 27759671},
             {"name": "三国杀", "artist": "汪苏泷", "id": 27759669},
             {"name": "巴赫旧约", "artist": "汪苏泷", "id": 27759670},
-            {"name": "有点甜", "artist": "汪苏泷/BY2", "id": 27759674},
             {"name": "埋葬冬天", "artist": "汪苏泷", "id": 27759675},
             {"name": "那一年", "artist": "汪苏泷", "id": 27759678},
             {"name": "脑海", "artist": "汪苏泷", "id": 27759679},
@@ -65,112 +32,77 @@ class MusicPlayer:
             {"name": "幸福是被你需要", "artist": "汪苏泷", "id": 27759681},
             {"name": "慢慢懂", "artist": "汪苏泷", "id": 27759682},
             {"name": "专属味道", "artist": "汪苏泷", "id": 29141051},
+            {"name": "第一首情歌", "artist": "汪苏泷", "id": 27759683},
         ]
-        # 建立快速查找索引
-        self._name_index = {}
-        for s in self.builtin_songs:
-            key = s["name"].lower().replace(" ", "")
-            self._name_index[key] = s
 
-    # ── 搜索 ──
+    # ── 查找（纯本地，不调API） ──
 
     def search(self, keyword: str, limit: int = 10) -> list:
-        """
-        搜索歌曲（优先调网易云API，失败用内置列表）
+        """从内置列表模糊查找歌曲"""
+        kw = keyword.strip().lower().replace(" ", "")
+        if not kw:
+            return self.builtin_songs[:limit]
 
-        Returns:
-            [{"name": "...", "artist": "...", "id": 123, "album": "..."}, ...]
-        """
-        results = self._search_netease(keyword, limit)
-        if results:
-            return results
-        # API 失败，从内置列表模糊匹配
-        return self._search_builtin(keyword, limit)
-
-    def _search_netease(self, keyword: str, limit: int = 10) -> list:
-        """调网易云 API 搜索"""
-        try:
-            params = {
-                "s": keyword,
-                "type": 1,        # 1=歌曲
-                "offset": 0,
-                "limit": limit,
-            }
-            resp = self.session.get(
-                SEARCH_URL,
-                params=params,
-                timeout=10,
-            )
-            data = resp.json()
-            if data.get("code") != 200:
-                return []
-
-            songs = []
-            for item in data.get("result", {}).get("songs", []):
-                artists = ", ".join(a["name"] for a in item.get("artists", []))
-                songs.append({
-                    "name": item["name"],
-                    "artist": artists,
-                    "id": item["id"],
-                    "album": item.get("album", {}).get("name", ""),
-                    "duration": item.get("duration", 0) // 1000,  # 转秒
-                })
-            return songs
-
-        except Exception:
-            return []
-
-    def _search_builtin(self, keyword: str, limit: int = 10) -> list:
-        """从内置列表模糊搜索"""
-        kw = keyword.lower().replace(" ", "")
         results = []
+        seen = set()
         for s in self.builtin_songs:
-            if kw in s["name"].lower().replace(" ", "") or kw in s["artist"]:
-                if s not in results:
+            # 精确匹配 > 包含匹配
+            name_key = s["name"].lower().replace(" ", "")
+            artist_key = s["artist"].lower()
+            if kw == name_key or kw in name_key or kw in artist_key:
+                dedup_key = f"{s['name']}_{s['artist']}"
+                if dedup_key not in seen:
+                    seen.add(dedup_key)
                     results.append(s)
             if len(results) >= limit:
                 break
+
+        # 没找到时也返回一点默认结果
+        if not results:
+            return self.builtin_songs[:limit]
         return results
 
-    # ── 播放 ──
-
-    def get_embed_html(self, song_id: int) -> str:
-        """生成网易云嵌入播放器 HTML"""
-        return PLAYER_TPL.format(song_id=song_id)
+    # ── 播放URL ──
 
     def get_play_url(self, song_id: int) -> str:
-        """获取可直接播放的 URL"""
+        """网易云音乐外链播放URL"""
         return f"https://music.163.com/song/media/outer/url?id={song_id}.mp3"
 
-    def get_song_detail(self, song_id: int) -> Optional[dict]:
-        """获取歌曲详细信息"""
-        try:
-            params = {"id": song_id, "ids": f"[{song_id}]"}
-            resp = self.session.get(SONG_URL, params=params, timeout=10)
-            data = resp.json()
-            if data.get("code") == 200 and data.get("songs"):
-                s = data["songs"][0]
-                return {
-                    "name": s["name"],
-                    "artist": ", ".join(a["name"] for a in s.get("artists", [])),
-                    "album": s.get("album", {}).get("name", ""),
-                    "pic": s.get("album", {}).get("picUrl", ""),
-                }
-        except Exception:
-            pass
-        return None
+    def get_player_html(self, song_name: str) -> str:
+        """
+        直接根据歌名生成 HTML 播放器
+        返回整段 HTML，webui 直接用
+        """
+        results = self.search(song_name)
+        if not results:
+            return (
+                f'<div style="text-align:center;padding:20px;color:red;">'
+                f'未找到「{song_name}」，试试：有点甜、万有引力、小星星...</div>'
+            )
 
-    # ── 歌单 ──
+        song = results[0]
+        audio_url = self.get_play_url(song["id"])
+        name = song["name"]
+        artist = song["artist"]
 
-    def get_playlist_embed(self, playlist_id: str) -> str:
-        """生成歌单嵌入播放器"""
+        sid = song["id"]
         return (
-            f'<iframe frameborder="no" border="0" marginwidth="0" '
-            f'marginheight="0" width=330 height=450 '
-            f'src="//music.163.com/outchain/player?type=0&id={playlist_id}'
-            f'&auto=1&height=430">'
-            f'</iframe>'
+            f'<div style="text-align:center;padding:20px;'
+            f'background:linear-gradient(135deg,#667eea,#764ba2);'
+            f'border-radius:16px;color:white;">'
+            f'<p style="font-size:20px;font-weight:bold;margin-bottom:5px;">'
+            f'🎵 {name}</p>'
+            f'<p style="font-size:14px;margin-bottom:15px;opacity:0.9;">{artist}</p>'
+            f'<audio controls autoplay style="width:100%;max-width:400px;">'
+            f'<source src="{audio_url}" type="audio/mpeg">'
+            f'</audio>'
+            f'<p style="font-size:12px;margin-top:10px;opacity:0.7;">'
+            f'若无法播放，<a href="https://music.163.com/#/song?id={sid}" '
+            f'target="_blank" style="color:white;text-decoration:underline;">'
+            f'点此在网易云打开</a></p></div>'
         )
+
+    # ── 心情推荐 ──
 
     def get_recommendations(self, mood: str) -> list:
         """根据心情推荐内置歌曲"""
@@ -181,8 +113,7 @@ class MusicPlayer:
             "甜蜜": ["有点甜", "专属味道", "幸福是被你需要", "唯你懂我心"],
             "安静": ["慢慢懂", "脑海", "唯你懂我心", "埋葬冬天"],
         }
-        for key, songs in mood_map.items():
+        for key, song_names in mood_map.items():
             if key in mood:
-                return [s for s in self.builtin_songs if s["name"] in songs]
-        # 默认返回热门
+                return [s for s in self.builtin_songs if s["name"] in song_names]
         return self.builtin_songs[:5]

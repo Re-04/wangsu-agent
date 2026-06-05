@@ -183,9 +183,9 @@ class AgentTools:
         """搜索歌曲"""
         return self.player.search(keyword)
 
-    def get_player_html(self, song_id: int) -> str:
-        """获取歌曲嵌入播放器 HTML"""
-        return self.player.get_embed_html(song_id)
+    def get_player_html(self, song_name: str) -> str:
+        """根据歌名生成播放器 HTML（自动查 ID）"""
+        return self.player.get_player_html(song_name)
 
     def get_mood_music(self, mood: str) -> list:
         """按心情推荐歌曲"""

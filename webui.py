@@ -146,56 +146,6 @@ def respond(message, history):
         yield "".join(full_reply)
 
 
-# ────────── 音乐播放功能 ──────────
-
-def search_songs(keyword: str):
-    """搜索歌曲，返回下拉选项列表"""
-    if not keyword or not TOOLS:
-        return gr.Dropdown(choices=[], value=None, label="搜索结果")
-    results = TOOLS.search_music(keyword)
-    if not results:
-        return gr.Dropdown(choices=[], value=None, label="未找到相关歌曲")
-    choices = []
-    song_map = {}
-    for s in results:
-        label = f"{s['name']} - {s['artist']}"
-        choices.append(label)
-        song_map[label] = s["id"]
-    return gr.Dropdown(choices=choices, value=None, label=f"找到 {len(results)} 首")
-
-
-def play_song(song_label: str):
-    """选择歌曲后更新播放器"""
-    if not song_label or not TOOLS:
-        return "<p style='color:gray'>请先搜索并选择一首歌</p>"
-    results = TOOLS.search_music(song_label.split(" - ")[0])
-    if results:
-        song_id = results[0]["id"]
-        html = TOOLS.get_player_html(song_id)
-        return html
-    return "<p style='color:red'>无法播放该歌曲</p>"
-
-
-def quick_play(song_name: str):
-    """快捷播放内置歌曲"""
-    if not TOOLS:
-        return "<p>请先配置 API Key</p>"
-    results = TOOLS.search_music(song_name)
-    if results:
-        html = TOOLS.get_player_html(results[0]["id"])
-        name = results[0]["name"]
-        artist = results[0]["artist"]
-        return f"**正在播放：{name} - {artist}**\n\n{html}"
-    return "<p>暂无此歌曲</p>"
-
-
-def mood_recommend(mood: str):
-    """按心情推荐"""
-    if not TOOLS:
-        return []
-    songs = TOOLS.get_mood_music(mood)
-    return [f"{s['name']} - {s['artist']}" for s in songs]
-
 
 # ────────── 构建页面 ──────────
 
@@ -256,27 +206,7 @@ def create_ui():
                     """播放歌曲"""
                     if not song_name or not TOOLS:
                         return "<p style='color:red'>请输入歌名</p>"
-                    # 从内置列表查找
-                    results = TOOLS.search_music(song_name.strip())
-                    if results:
-                        sid = results[0]["id"]
-                        name = results[0]["name"]
-                        artist = results[0]["artist"]
-                        # 用 HTML5 audio 标签，兼容性好
-                        audio_url = f"https://music.163.com/song/media/outer/url?id={sid}.mp3"
-                        html = (
-                            f'<div style="text-align:center; padding:15px; '
-                            f'background:#f5f5f5; border-radius:12px;">'
-                            f'<p style="font-size:18px; font-weight:bold;">'
-                            f'🎵 {name} - {artist}</p>'
-                            f'<audio controls autoplay style="width:100%;">'
-                            f'<source src="{audio_url}" type="audio/mpeg">'
-                            f'您的浏览器不支持音频播放</audio>'
-                            f'<p style="font-size:12px; color:gray; margin-top:8px;">'
-                            f'来源：网易云音乐</p></div>'
-                        )
-                        return html
-                    return f"<p style='color:red'>未找到「{song_name}」，试试其他歌名</p>"
+                    return TOOLS.player.get_player_html(song_name.strip())
 
                 play_btn.click(
                     fn=do_play,
