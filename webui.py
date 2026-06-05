@@ -262,14 +262,13 @@ def create_ui():
                     fn=search_songs,
                     inputs=search_input,
                     outputs=song_selector,
-                )
-                search_input.submit(
-                    fn=search_songs,
-                    inputs=search_input,
-                    outputs=song_selector,
+                ).then(
+                    fn=lambda: None,
+                    inputs=[],
+                    outputs=[],
                 )
 
-                # 选择歌曲事件
+                # 下拉选择歌曲事件
                 song_selector.change(
                     fn=play_song,
                     inputs=song_selector,
@@ -277,27 +276,25 @@ def create_ui():
                 )
 
                 gr.Markdown("---")
-                gr.Markdown("### ⚡ 快捷播放")
+                gr.Markdown("### ⚡ 快捷点歌")
 
-                # 热门歌曲快捷按钮（分两行）
-                # 用 hidden textbox 中转，避免 gr.State 兼容问题
-                quick_song_input = gr.Textbox(visible=False)
-                hot_songs = [
-                    "有点甜", "万有引力", "不分手的恋爱",
-                    "小星星", "风度", "花千骨",
-                    "年轮", "追光者", "大娱乐家",
-                    "苦笑", "三国杀", "巴赫旧约",
-                ]
-                for i in range(0, 12, 4):
-                    row_songs = hot_songs[i:i+4]
-                    with gr.Row():
-                        for song in row_songs:
-                            btn = gr.Button(song, size="sm", min_width=80)
-                            btn.click(
-                                fn=lambda s=song: quick_play(s),
-                                inputs=[],
-                                outputs=player_html,
-                            )
+                # 用下拉菜单代替多个按钮，兼容性更好
+                quick_selector = gr.Dropdown(
+                    choices=[
+                        "有点甜", "万有引力", "不分手的恋爱",
+                        "小星星", "风度", "花千骨",
+                        "年轮", "追光者", "大娱乐家",
+                        "苦笑", "三国杀", "巴赫旧约",
+                        "专属味道", "慢慢懂", "埋葬冬天",
+                    ],
+                    label="选择歌曲直接播放",
+                    interactive=True,
+                )
+                quick_selector.change(
+                    fn=quick_play,
+                    inputs=quick_selector,
+                    outputs=player_html,
+                )
 
                 gr.Markdown("---")
                 gr.Markdown("### 🎭 按心情听歌")
